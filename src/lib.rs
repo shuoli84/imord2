@@ -276,6 +276,8 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
             let mut result = KeyRangeResult::None;
             let mut extra_child_to_check: Option<usize> = None;
 
+            let mut matched_indexes = vec![];
+
             for (index, key) in self.key_values.iter().enumerate() {
                 match predicate(&key.0) {
                     PredicateResult::Left => {
@@ -283,13 +285,8 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
                         continue;
                     }
                     PredicateResult::Match => {
+                        matched_indexes.push((index, key));
                         extra_child_to_check = Some(index + 1);
-                        result = result.merge_into(self.children[index].find_key_range(predicate));
-                        result = result.merge_into(KeyRangeResult::Some {
-                            start: &key.0,
-                            end: &key.0,
-                            n: 1,
-                        });
                     }
                     PredicateResult::Right => {
                         extra_child_to_check = None;
@@ -298,6 +295,39 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
                     }
                 }
             }
+
+            if !matched_indexes.is_empty() {
+                let (first_idx, first_key) = matched_indexes[0];
+
+                // for first match index, visit child to update result
+                result = result.merge_into(self.children[first_idx].find_key_range(predicate));
+                result = result.merge_into(KeyRangeResult::Some {
+                    start: &first_key.0,
+                    end: &first_key.0,
+                    n: 1,
+                });
+
+                if matched_indexes.len() >= 2 {
+                    // we do not need to visit children between two matched key
+                    let (last_idx, last_key) = matched_indexes[matched_indexes.len() - 1];
+
+                    let mut count = 0;
+                    for idx in first_idx + 1..=last_idx {
+                        // add children count
+                        count += self.children[idx].count;
+                        // also add the item itself
+                        count += 1;
+                    }
+
+                    result = result.merge_into(KeyRangeResult::Some {
+                        start: &first_key.0,
+                        end: &last_key.0,
+                        n: count,
+                    });
+                } else {
+                }
+            }
+
             if let Some(child_idx) = extra_child_to_check {
                 result = result.merge_into(self.children[child_idx].find_key_range(predicate));
             }
@@ -377,6 +407,9 @@ mod test {
 
             let find_result = node.find_key_range(&pred);
             assert_eq!(find_result.n(), 6);
+
+            let find_result = node.find_key_range(&|_k| PredicateResult::Match);
+            assert_eq!(find_result.n(), 9);
         }
     }
 
