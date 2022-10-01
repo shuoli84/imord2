@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -52,14 +51,15 @@ pub struct Node<K, V> {
     key_values: Vec<(K, V)>,
     children: Vec<Arc<Node<K, V>>>,
     n: usize,
+    count: usize,
 }
 
 impl<K: Debug, V: Debug> Debug for Node<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
+            .field("count", &self.count)
             .field("key_values", &self.key_values)
             .field("children", &self.children)
-            .field("n", &self.n)
             .finish()
     }
 }
@@ -70,6 +70,7 @@ impl<K: Clone, V: Clone> Clone for Node<K, V> {
             key_values: self.key_values.clone(),
             children: self.children.clone(),
             n: self.n,
+            count: self.count,
         }
     }
 }
@@ -89,14 +90,17 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
             key_values: vec![],
             children: vec![],
             n,
+            count: 0,
         }
     }
 
     fn new_with_key_values(key_values: Vec<(K, V)>, children: Vec<Arc<Self>>, n: usize) -> Self {
+        let count = key_values.len() + children.iter().fold(0, |a, c| a + c.count);
         Self {
             key_values,
             children,
             n,
+            count,
         }
     }
 
@@ -104,6 +108,7 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
         if self.is_leaf() {
             self.key_values.push((key, value));
             self.key_values.sort_by(|l, r| l.0.cmp(&r.0));
+            self.count += 1;
         } else {
             match self.key_values.binary_search_by(|(k, _v)| k.cmp(&key)) {
                 Ok(idx) => {
@@ -115,6 +120,7 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
                     let child = Arc::make_mut(&mut self.children[idx]);
                     match child.insert(key, value) {
                         InsertResult::NotSplited => {
+                            self.count += 1;
                             return InsertResult::NotSplited;
                         }
                         InsertResult::Splited {
@@ -122,6 +128,7 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
                             new_l,
                             new_r,
                         } => {
+                            self.count += 1;
                             self.key_values.insert(idx, new_k_v);
                             self.children[idx] = new_l;
                             self.children.insert(idx + 1, new_r);
