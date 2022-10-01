@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -39,6 +40,11 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
         };
         self.root = Some(Arc::new(new_root));
     }
+}
+
+pub enum VisitResult {
+    Continue,
+    Break,
 }
 
 /// Node is the tree node, root, branch and leaf node are same
@@ -183,6 +189,117 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
     }
 }
 
+pub enum KeyRangeResult<'a, K> {
+    None,
+    Some { start: &'a K, end: &'a K, n: usize },
+}
+
+impl<K: Ord> KeyRangeResult<'_, K> {
+    #[must_use]
+    pub fn merge_into(self, other: Self) -> Self {
+        match (&self, &other) {
+            (Self::None, _) => other,
+            (_, Self::None) => self,
+            (
+                Self::Some {
+                    start: self_start,
+                    end: self_end,
+                    n: self_n,
+                },
+                Self::Some { start, end, n },
+            ) => Self::Some {
+                start: std::cmp::min(self_start, start),
+                end: std::cmp::max(self_end, end),
+                n: self_n + n,
+            },
+        }
+    }
+
+    pub fn n(&self) -> usize {
+        match self {
+            KeyRangeResult::None => 0,
+            KeyRangeResult::Some { n, .. } => *n,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub enum PredicateResult {
+    Left,
+    Match,
+    Right,
+}
+
+impl<K: Ord + Clone, V: Clone> Node<K, V> {
+    /// predicate result should be consistent for range
+    /// if true for larger range, then it must be true for smaller range
+    /// if false for larger range, then it must be false for smaller range
+    /// this helps us to visit range with logn
+    pub fn find_key_range<P: Fn(&K) -> PredicateResult>(&self, predicate: &P) -> KeyRangeResult<K> {
+        if self.is_leaf() {
+            let mut key_predicate_iter = self
+                .key_values
+                .iter()
+                .filter(|k| predicate(&k.0) == PredicateResult::Match);
+            match key_predicate_iter.next() {
+                None => KeyRangeResult::None,
+                Some(first_key) => {
+                    let start_key = &first_key.0;
+                    let mut end_key: &K = start_key;
+                    let mut count = 1;
+
+                    while let Some(key) = key_predicate_iter.next() {
+                        count += 1;
+                        end_key = &key.0;
+                    }
+
+                    KeyRangeResult::Some {
+                        start: start_key,
+                        end: end_key,
+                        n: count,
+                    }
+                }
+            }
+        } else {
+            // for branch,
+            // 1. find the first idx with predicate as Equal/Greater, it is the start
+            // 2. then find the first idx with predicate as Greater, also need to check last
+            //     child
+
+            let mut result = KeyRangeResult::None;
+            let mut extra_child_to_check: Option<usize> = None;
+
+            for (index, key) in self.key_values.iter().enumerate() {
+                match predicate(&key.0) {
+                    PredicateResult::Left => {
+                        extra_child_to_check = Some(index + 1);
+                        continue;
+                    }
+                    PredicateResult::Match => {
+                        extra_child_to_check = Some(index + 1);
+                        result = result.merge_into(self.children[index].find_key_range(predicate));
+                        result = result.merge_into(KeyRangeResult::Some {
+                            start: &key.0,
+                            end: &key.0,
+                            n: 1,
+                        });
+                    }
+                    PredicateResult::Right => {
+                        extra_child_to_check = None;
+                        result = result.merge_into(self.children[index].find_key_range(predicate));
+                        break;
+                    }
+                }
+            }
+            if let Some(child_idx) = extra_child_to_check {
+                result = result.merge_into(self.children[child_idx].find_key_range(predicate));
+            }
+
+            result
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -193,6 +310,66 @@ mod test {
         let keys = (1..13i32).rev().collect::<Vec<_>>();
         for i in keys {
             tree.insert(i, i * 100);
+        }
+    }
+
+    #[test]
+    fn test_node_find_key_range() {
+        {
+            let node = Node::<i32, i32>::new_with_key_values(
+                vec![(1, 1), (2, 2), (3, 3), (4, 4)],
+                vec![],
+                4,
+            );
+            {
+                let pred = |k: &i32| match *k {
+                    i32::MIN..=1 => PredicateResult::Left,
+                    2 => PredicateResult::Match,
+                    3.. => PredicateResult::Right,
+                };
+                let find_result = node.find_key_range(&pred);
+                assert_eq!(find_result.n(), 1);
+            }
+            {
+                let pred = |k: &i32| match *k {
+                    i32::MIN..=1 => PredicateResult::Left,
+                    2..=3 => PredicateResult::Match,
+                    4.. => PredicateResult::Right,
+                };
+
+                let find_result = node.find_key_range(&pred);
+
+                assert_eq!(find_result.n(), 2);
+            }
+        }
+
+        {
+            let left_child = Arc::new(Node::<i32, i32>::new_with_key_values(
+                vec![(1, 1), (2, 2), (3, 3), (4, 4)],
+                vec![],
+                4,
+            ));
+
+            let right_child = Arc::new(Node::<i32, i32>::new_with_key_values(
+                vec![(10, 1), (20, 2), (30, 3), (40, 4)],
+                vec![],
+                4,
+            ));
+
+            let node = Node::<i32, i32>::new_with_key_values(
+                vec![(9, 9)],
+                vec![left_child, right_child],
+                4,
+            );
+
+            let pred = |k: &i32| match *k {
+                i32::MIN..=1 => PredicateResult::Left,
+                2..=20 => PredicateResult::Match,
+                21.. => PredicateResult::Right,
+            };
+
+            let find_result = node.find_key_range(&pred);
+            assert_eq!(find_result.n(), 6);
         }
     }
 
