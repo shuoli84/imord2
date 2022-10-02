@@ -17,6 +17,7 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
         Self { root: None, n }
     }
 
+    /// insert key value into map
     pub fn insert(&mut self, key: K, value: V) {
         let new_root = match self.root.as_mut() {
             Some(root) => {
@@ -38,6 +39,11 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
             None => Node::new_with_key_values(vec![(key, value)], vec![], self.n),
         };
         self.root = Some(Arc::new(new_root));
+    }
+
+    /// get value by key
+    pub fn get_by_key(&self, key: &K) -> Option<&V> {
+        self.root.as_ref()?.get(key)
     }
 }
 
@@ -177,13 +183,17 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
-        for (k, value) in self.key_values.iter() {
-            if k.eq(key) {
-                return Some(value);
+        match self.key_values.binary_search_by(|(k, _)| k.cmp(key)) {
+            Ok(idx) => Some(&self.key_values[idx].1),
+            Err(idx) => {
+                if self.is_leaf() {
+                    None
+                } else {
+                    let child = &self.children[idx];
+                    child.get(key)
+                }
             }
         }
-
-        None
     }
 
     /// if self.children size larger than n, then split
@@ -207,8 +217,9 @@ mod test {
     fn test_tree() {
         let mut tree = BTree::<i32, i32>::new(4);
         let keys = (1..13i32).rev().collect::<Vec<_>>();
-        for i in keys {
-            tree.insert(i, i * 100);
+        for i in keys.iter() {
+            tree.insert(*i, i * 100);
+            assert_eq!(*tree.get_by_key(i).unwrap(), i * 100);
         }
     }
 
@@ -216,7 +227,7 @@ mod test {
     fn test_node() {
         let mut node = Node::<i32, i32>::new(4);
         let keys = (1..100i32).rev().collect::<Vec<_>>();
-        for i in keys {
+        for i in keys.clone() {
             match node.insert(i, i * 100) {
                 InsertResult::Splited {
                     new_k_v,
@@ -229,8 +240,10 @@ mod test {
                     // do nothing
                 }
             }
+        }
 
-            dbg!(&node);
+        for i in keys.iter() {
+            assert_eq!(*node.get(i).unwrap(), i * 100);
         }
     }
 }
