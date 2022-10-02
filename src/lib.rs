@@ -43,7 +43,23 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
 
     /// get value by key
     pub fn get_by_key(&self, key: &K) -> Option<&V> {
-        self.root.as_ref()?.get(key)
+        self.root.as_ref()?.get_by_key(key)
+    }
+
+    /// get key, value by offset
+    ///
+    /// # Examples
+    /// ```
+    /// use imord2::BTree;
+    ///
+    /// let mut tree = BTree::<&'static str, i32>::new(4);
+    /// tree.insert("a", 1);
+    /// tree.insert("b", 2);
+    /// assert_eq!(tree.get_by_offset(0).unwrap().0, "a");
+    /// assert_eq!(tree.get_by_offset(1).unwrap().0, "b");
+    /// ```
+    pub fn get_by_offset(&self, offset: usize) -> Option<&(K, V)> {
+        self.root.as_ref()?.get_by_offset(offset)
     }
 }
 
@@ -182,7 +198,7 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
         }
     }
 
-    pub fn get(&self, key: &K) -> Option<&V> {
+    pub fn get_by_key(&self, key: &K) -> Option<&V> {
         match self.key_values.binary_search_by(|(k, _)| k.cmp(key)) {
             Ok(idx) => Some(&self.key_values[idx].1),
             Err(idx) => {
@@ -190,9 +206,41 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
                     None
                 } else {
                     let child = &self.children[idx];
-                    child.get(key)
+                    child.get_by_key(key)
                 }
             }
+        }
+    }
+
+    /// get k,v at offset
+    pub fn get_by_offset(&self, offset: usize) -> Option<&(K, V)> {
+        if self.count <= offset {
+            return None;
+        }
+
+        if self.is_leaf() {
+            self.key_values.get(offset)
+        } else {
+            let mut relative_offset = offset;
+
+            for idx in 0..self.key_values.len() {
+                let left_child = &self.children[idx];
+                if left_child.count > relative_offset {
+                    return left_child.get_by_offset(relative_offset);
+                }
+
+                relative_offset -= left_child.count;
+
+                if relative_offset == 0 {
+                    return Some(&self.key_values[idx]);
+                }
+
+                relative_offset -= 1;
+            }
+
+            // check the last child
+            let last_child = &self.children.last().unwrap();
+            last_child.get_by_offset(relative_offset)
         }
     }
 
@@ -243,7 +291,11 @@ mod test {
         }
 
         for i in keys.iter() {
-            assert_eq!(*node.get(i).unwrap(), i * 100);
+            assert_eq!(*node.get_by_key(i).unwrap(), i * 100);
+        }
+
+        for i in 0..keys.len() {
+            node.get_by_offset(i).unwrap();
         }
     }
 }
