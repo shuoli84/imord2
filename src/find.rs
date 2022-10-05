@@ -159,16 +159,16 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
 mod tests {
     use std::sync::Arc;
 
+    use crate::BTreeConfig;
+
     use super::*;
 
     #[test]
     fn test_node_find_key_range() {
         {
-            let node = Node::<i32, i32>::new_with_key_values(
-                vec![(1, 1), (2, 2), (3, 3), (4, 4)],
-                vec![],
-                4,
-            );
+            let config = BTreeConfig { max_degree: 4 };
+            let node =
+                Node::<i32, i32>::new_with_key_values(vec![(1, 1), (2, 2), (3, 3), (4, 4)], vec![]);
             {
                 let pred = |k: &i32| match *k {
                     i32::MIN..=1 => PredicateResult::Left,
@@ -195,20 +195,15 @@ mod tests {
             let left_child = Arc::new(Node::<i32, i32>::new_with_key_values(
                 vec![(1, 1), (2, 2), (3, 3), (4, 4)],
                 vec![],
-                4,
             ));
 
             let right_child = Arc::new(Node::<i32, i32>::new_with_key_values(
                 vec![(10, 1), (20, 2), (30, 3), (40, 4)],
                 vec![],
-                4,
             ));
 
-            let node = Node::<i32, i32>::new_with_key_values(
-                vec![(9, 9)],
-                vec![left_child, right_child],
-                4,
-            );
+            let node =
+                Node::<i32, i32>::new_with_key_values(vec![(9, 9)], vec![left_child, right_child]);
 
             let pred = |k: &i32| match *k {
                 i32::MIN..=1 => PredicateResult::Left,

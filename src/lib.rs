@@ -1,9 +1,45 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy)]
+pub struct BTreeConfig {
+    max_degree: usize,
+}
+
+impl BTreeConfig {
+    pub fn node_max_children(&self) -> usize {
+        self.max_degree
+    }
+
+    pub fn node_min_children(&self) -> usize {
+        self.max_degree / 2 + self.max_degree % 2
+    }
+
+    pub fn node_max_key_value(&self) -> usize {
+        self.node_max_children() - 1
+    }
+
+    pub fn node_min_key_value(&self) -> usize {
+        self.node_min_children() - 1
+    }
+
+    pub fn node_under_size(&self, key_value_count: usize) -> bool {
+        key_value_count < self.node_min_key_value()
+    }
+
+    /// node is already at min size, which means it can't lend to other
+    pub fn node_at_min_size(&self, key_value_count: usize) -> bool {
+        key_value_count <= self.node_min_key_value()
+    }
+
+    pub fn node_should_split(&self, key_value_count: usize) -> bool {
+        key_value_count > self.node_max_key_value()
+    }
+}
+
 pub struct BTree<K, V> {
     root: Option<Arc<Node<K, V>>>,
-    n: usize,
+    config: BTreeConfig,
 }
 
 impl<K: Debug, V: Debug> Debug for BTree<K, V> {
@@ -13,8 +49,8 @@ impl<K: Debug, V: Debug> Debug for BTree<K, V> {
 }
 
 impl<K: Ord + Clone, V: Clone> BTree<K, V> {
-    pub fn new(n: usize) -> Self {
-        Self { root: None, n }
+    pub fn new(config: BTreeConfig) -> Self {
+        Self { root: None, config }
     }
 
     /// insert key value into map
@@ -22,23 +58,38 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
         let new_root = match self.root.as_mut() {
             Some(root) => {
                 let root = Arc::make_mut(root);
-                match root.insert(key, value) {
+                match root.insert(key, value, &self.config) {
                     InsertResult::Splited {
                         new_k_v,
                         new_l,
                         new_r,
                     } => {
                         // root node splitted, make a new node
-                        Node::new_with_key_values(vec![new_k_v], vec![new_l, new_r], self.n)
+                        Node::new_with_key_values(vec![new_k_v], vec![new_l, new_r])
                     }
                     InsertResult::NotSplited => {
                         return;
                     }
                 }
             }
-            None => Node::new_with_key_values(vec![(key, value)], vec![], self.n),
+            None => Node::new_with_key_values(vec![(key, value)], vec![]),
         };
         self.root = Some(Arc::new(new_root));
+    }
+
+    /// delete by key
+    pub fn delete_by_key(&mut self, key: &K) -> Option<(K, V)> {
+        let root = Arc::make_mut(self.root.as_mut()?);
+        let delete_result = root.delete_by_key(key, &self.config);
+
+        if root.count == 0 {
+            self.root = None
+        } else if root.key_values.len() == 0 {
+            // if root node key_value is empty, promote its child as new root
+            self.root = Some(root.children.remove(0))
+        }
+
+        delete_result
     }
 
     /// get value by key
@@ -72,7 +123,6 @@ pub enum VisitResult {
 pub struct Node<K, V> {
     key_values: Vec<(K, V)>,
     children: Vec<Arc<Node<K, V>>>,
-    n: usize,
     count: usize,
 }
 
@@ -91,7 +141,6 @@ impl<K: Clone, V: Clone> Clone for Node<K, V> {
         Self {
             key_values: self.key_values.clone(),
             children: self.children.clone(),
-            n: self.n,
             count: self.count,
         }
     }
@@ -107,26 +156,24 @@ pub enum InsertResult<K, V> {
 }
 
 impl<K: Ord + Clone, V: Clone> Node<K, V> {
-    pub fn new(n: usize) -> Self {
+    pub fn new() -> Self {
         Self {
             key_values: vec![],
             children: vec![],
-            n,
             count: 0,
         }
     }
 
-    fn new_with_key_values(key_values: Vec<(K, V)>, children: Vec<Arc<Self>>, n: usize) -> Self {
+    fn new_with_key_values(key_values: Vec<(K, V)>, children: Vec<Arc<Self>>) -> Self {
         let count = key_values.len() + children.iter().fold(0, |a, c| a + c.count);
         Self {
             key_values,
             children,
-            n,
             count,
         }
     }
 
-    pub fn insert(&mut self, key: K, value: V) -> InsertResult<K, V> {
+    pub fn insert(&mut self, key: K, value: V, config: &BTreeConfig) -> InsertResult<K, V> {
         if self.is_leaf() {
             self.key_values.push((key, value));
             self.key_values.sort_by(|l, r| l.0.cmp(&r.0));
@@ -140,7 +187,7 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
                 Err(idx) => {
                     // we should insert at child at idx
                     let child = Arc::make_mut(&mut self.children[idx]);
-                    match child.insert(key, value) {
+                    match child.insert(key, value, config) {
                         InsertResult::NotSplited => {
                             self.count += 1;
                             return InsertResult::NotSplited;
@@ -160,7 +207,7 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
             }
         }
 
-        if !self.should_split() {
+        if !config.node_should_split(self.key_values.len()) {
             return InsertResult::NotSplited;
         }
 
@@ -180,16 +227,8 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
             (vec![], vec![])
         };
 
-        let new_l = Arc::new(Self::new_with_key_values(
-            left_key_values,
-            left_children,
-            self.n,
-        ));
-        let new_r = Arc::new(Self::new_with_key_values(
-            right_key_values,
-            right_children,
-            self.n,
-        ));
+        let new_l = Arc::new(Self::new_with_key_values(left_key_values, left_children));
+        let new_r = Arc::new(Self::new_with_key_values(right_key_values, right_children));
 
         InsertResult::Splited {
             new_k_v: root_key_value,
@@ -244,26 +283,23 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
         }
     }
 
-    /// if self.children size larger than n, then split
-    fn should_split(&self) -> bool {
-        self.key_values.len() >= self.n
-    }
-
-    fn is_leaf(&self) -> bool {
+    pub(crate) fn is_leaf(&self) -> bool {
         self.children.is_empty()
     }
 }
 
 mod find;
 pub use find::*;
+mod delete;
+pub use delete::*;
 
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
-    fn test_tree() {
-        let mut tree = BTree::<i32, i32>::new(4);
+    fn test_tree_insert() {
+        let mut tree = BTree::<i32, i32>::new(BTreeConfig { max_degree: 4 });
         let keys = (1..13i32).rev().collect::<Vec<_>>();
         for i in keys.iter() {
             tree.insert(*i, i * 100);
@@ -272,17 +308,37 @@ mod test {
     }
 
     #[test]
+    fn test_tree_delete() {
+        let mut tree = BTree::<i32, u32>::new(BTreeConfig { max_degree: 4 });
+        let keys = (1..13i32).collect::<Vec<_>>();
+        for i in keys.iter() {
+            tree.insert(*i, (i * 100) as u32);
+        }
+
+        dbg!(&tree);
+
+        let mut key_values = vec![];
+        for i in keys.iter() {
+            key_values.push(tree.delete_by_key(i).unwrap());
+            dbg!(&tree);
+        }
+
+        assert_eq!(key_values.len(), keys.len());
+    }
+
+    #[test]
     fn test_node() {
-        let mut node = Node::<i32, i32>::new(4);
+        let config = BTreeConfig { max_degree: 4 };
+        let mut node = Node::<i32, i32>::new();
         let keys = (1..100i32).rev().collect::<Vec<_>>();
         for i in keys.clone() {
-            match node.insert(i, i * 100) {
+            match node.insert(i, i * 100, &config) {
                 InsertResult::Splited {
                     new_k_v,
                     new_l,
                     new_r,
                 } => {
-                    node = Node::new_with_key_values(vec![new_k_v], vec![new_l, new_r], node.n);
+                    node = Node::new_with_key_values(vec![new_k_v], vec![new_l, new_r]);
                 }
                 InsertResult::NotSplited => {
                     // do nothing
