@@ -132,7 +132,7 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
     }
 
     /// visit inner node in Pre order
-    pub fn visit(&self, visit_fn: &mut impl FnMut(visit::NodeProxy<K, V>)) -> Option<()> {
+    pub fn visit(&self, visit_fn: &mut impl FnMut(&visit::VisitStack<K, V>)) -> Option<()> {
         let root = self.root.as_ref()?;
         visit::visit_node(root, visit_fn);
         Some(())

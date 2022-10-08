@@ -28,6 +28,12 @@ impl<K: Clone, V: Clone> Clone for Node<K, V> {
     }
 }
 
+impl<K, V> Node<K, V> {
+    pub(crate) fn is_leaf(&self) -> bool {
+        self.children.is_empty()
+    }
+}
+
 impl<K: Ord + Clone, V: Clone> Node<K, V> {
     #[cfg(test)]
     pub(crate) fn new() -> Self {
@@ -91,10 +97,6 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
             let last_child = &self.children.last().unwrap();
             last_child.get_by_offset(relative_offset)
         }
-    }
-
-    pub(crate) fn is_leaf(&self) -> bool {
-        self.children.is_empty()
     }
 }
 
