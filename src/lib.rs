@@ -4,10 +4,11 @@ use std::sync::Arc;
 pub use node::find::*;
 use node::insert::InsertResult;
 use node::node::Node;
+pub use node::visit;
 
 #[derive(Debug, Clone, Copy)]
 pub struct BTreeConfig {
-    max_degree: usize,
+    pub max_degree: usize,
 }
 
 impl BTreeConfig {
@@ -128,6 +129,13 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
     /// ```
     pub fn get_by_offset(&self, offset: usize) -> Option<&(K, V)> {
         self.root.as_ref()?.get_by_offset(offset)
+    }
+
+    /// visit inner node in Pre order
+    pub fn visit(&self, visit_fn: &mut impl FnMut(visit::NodeProxy<K, V>)) -> Option<()> {
+        let root = self.root.as_ref()?;
+        visit::visit_node(root, visit_fn);
+        Some(())
     }
 }
 
