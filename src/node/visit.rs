@@ -4,6 +4,8 @@ use super::node::Node;
 
 pub struct NodeProxy<'a, K, V> {
     pub key_values: &'a [(K, V)],
+    /// count including this node and its children
+    pub count: usize,
 }
 
 pub struct VisitStack<'a, K, V> {
@@ -28,6 +30,7 @@ fn visit_node_inner<'a, K, V>(
 ) -> Vec<(NodeProxy<'a, K, V>, usize)> {
     let proxy = NodeProxy {
         key_values: &node.key_values,
+        count: node.count,
     };
     let visit_stack = VisitStack {
         node: proxy,

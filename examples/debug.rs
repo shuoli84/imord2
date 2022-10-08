@@ -22,8 +22,8 @@ impl std::cmp::Ord for Key {
 }
 
 fn main() {
-    let mut btree = BTree::<Key, ()>::new_with_config(BTreeConfig { max_degree: 10 });
-    let keys = (0..100).rev().collect::<Vec<_>>();
+    let mut btree = BTree::<Key, ()>::new_with_config(BTreeConfig { max_degree: 20 });
+    let keys = (0..2000).rev().collect::<Vec<_>>();
     for i in keys {
         btree.insert(Key { value: i }, ());
     }
@@ -47,7 +47,7 @@ fn main() {
                     println!("{prefix}{:?}", parent.key_values[*child_index].0);
                 }
 
-                prev_child_is_last = *child_index == parent.key_values.len();
+                prev_child_is_last = *child_index == parent.key_values.len() && prev_child_is_last;
             }
         }
     });
