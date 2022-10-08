@@ -14,8 +14,15 @@ pub enum InsertResult<K, V> {
 impl<K: Ord + Clone, V: Clone> Node<K, V> {
     pub fn insert(&mut self, key: K, value: V, config: &BTreeConfig) -> InsertResult<K, V> {
         if self.is_leaf() {
-            self.key_values.push((key, value));
-            self.key_values.sort_by(|l, r| l.0.cmp(&r.0));
+            match self.key_values.binary_search_by(|(k, _)| k.cmp(&key)) {
+                Ok(idx) => {
+                    // we are the node
+                    self.key_values[idx] = (key, value);
+                }
+                Err(idx) => {
+                    self.key_values.insert(idx, (key, value));
+                }
+            }
             self.count += 1;
         } else {
             match self.key_values.binary_search_by(|(k, _v)| k.cmp(&key)) {

@@ -1,10 +1,31 @@
 use imord2::{BTree, BTreeConfig};
+use std::sync::atomic::AtomicUsize;
+
+static CMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(PartialEq, Eq, PartialOrd, Clone, Copy)]
+struct Key {
+    value: i32,
+}
+
+impl std::fmt::Debug for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl std::cmp::Ord for Key {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        CMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.value.cmp(&other.value)
+    }
+}
 
 fn main() {
-    let mut btree = BTree::<i32, ()>::new_with_config(BTreeConfig { max_degree: 10 });
+    let mut btree = BTree::<Key, ()>::new_with_config(BTreeConfig { max_degree: 10 });
     let keys = (0..100).rev().collect::<Vec<_>>();
     for i in keys {
-        btree.insert(i, ());
+        btree.insert(Key { value: i }, ());
     }
 
     btree.visit(&mut |node_stack| {
@@ -40,4 +61,9 @@ fn main() {
             }
         }
     });
+
+    println!(
+        "{} cmp called",
+        CMP_COUNTER.load(std::sync::atomic::Ordering::Relaxed)
+    );
 }
