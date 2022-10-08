@@ -5,6 +5,20 @@ pub enum KeyRangeResult<'a, K> {
     Some { start: &'a K, end: &'a K, n: usize },
 }
 
+impl<K: std::fmt::Debug> std::fmt::Debug for KeyRangeResult<'_, K> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "None"),
+            Self::Some { start, end, n } => f
+                .debug_struct("Some")
+                .field("start", start)
+                .field("end", end)
+                .field("n", n)
+                .finish(),
+        }
+    }
+}
+
 impl<K: Ord> KeyRangeResult<'_, K> {
     #[must_use]
     pub fn merge_into(self, other: Self) -> Self {

@@ -131,6 +131,13 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
         self.root.as_ref()?.get_by_offset(offset)
     }
 
+    pub fn find_key_range(&self, pred: impl Fn(&K) -> PredicateResult) -> KeyRangeResult<K> {
+        match self.root.as_ref() {
+            Some(root) => root.find_key_range(&pred),
+            None => KeyRangeResult::None,
+        }
+    }
+
     /// visit inner node in Pre order
     pub fn visit(&self, visit_fn: &mut impl FnMut(&visit::VisitStack<K, V>)) -> Option<()> {
         let root = self.root.as_ref()?;
