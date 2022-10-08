@@ -1,4 +1,4 @@
-use crate::Node;
+use super::node::Node;
 
 pub enum KeyRangeResult<'a, K> {
     None,
@@ -57,7 +57,7 @@ pub enum PredicateResult {
 
 impl<K: Ord + Clone, V: Clone> Node<K, V> {
     /// predicate result should be consistent for range
-    /// if true for larger range, then it must be true for smaller range
+    /// if true for smaller range, then it must be true for larger range
     /// if false for larger range, then it must be false for smaller range
     /// this helps us to visit range with logn
     pub fn find_key_range<P: Fn(&K) -> PredicateResult>(&self, predicate: &P) -> KeyRangeResult<K> {
@@ -157,16 +157,12 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use crate::BTreeConfig;
-
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn test_node_find_key_range() {
         {
-            let config = BTreeConfig { max_degree: 4 };
             let node =
                 Node::<i32, i32>::new_with_key_values(vec![(1, 1), (2, 2), (3, 3), (4, 4)], vec![]);
             {

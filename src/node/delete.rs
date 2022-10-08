@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
+use super::node::Node;
 use crate::BTreeConfig;
-
-use super::Node;
+use std::sync::Arc;
 
 impl<K: Ord + Clone, V: Clone> Node<K, V> {
     pub fn delete_by_key(&mut self, key: &K, config: &BTreeConfig) -> Option<(K, V)> {
