@@ -34,17 +34,7 @@ fn main() {
         let is_leaf = node_stack.is_leaf;
         let prefix = "  ".repeat(depth);
 
-        if !is_leaf {
-            // let (parent, parent_child_index) = node_stack.stacks.last().unwrap();
-
-            // println!(
-            //     "{prefix}{:?}",
-            //     node.key_values.iter().map(|(k, _)| k).collect::<Vec<_>>()
-            // );
-            // if *parent_child_index != parent.key_values.len() {
-            //     println!("{prefix}{:?}", parent.key_values[*parent_child_index]);
-            // }
-        } else {
+        if is_leaf {
             println!(
                 "{prefix}{:?}",
                 node.key_values.iter().map(|(k, _)| k).collect::<Vec<_>>()
