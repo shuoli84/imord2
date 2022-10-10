@@ -72,8 +72,8 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
     }
 
     /// insert key value into map
-    pub fn insert(&mut self, key: K, value: V) {
-        let new_root = match self.root.as_mut() {
+    pub fn insert(&mut self, key: K, value: V) -> bool {
+        let (new_root, is_new) = match self.root.as_mut() {
             Some(root) => {
                 let root = Arc::make_mut(root);
                 match root.insert(key, value, &self.config) {
@@ -83,16 +83,20 @@ impl<K: Ord + Clone, V: Clone> BTree<K, V> {
                         new_r,
                     } => {
                         // root node splitted, make a new node
-                        Node::new_with_key_values(vec![new_k_v], vec![new_l, new_r])
+                        (
+                            Node::new_with_key_values(vec![new_k_v], vec![new_l, new_r]),
+                            true,
+                        )
                     }
-                    InsertResult::NotSplited => {
-                        return;
+                    InsertResult::NotSplited { is_new } => {
+                        return is_new;
                     }
                 }
             }
-            None => Node::new_with_key_values(vec![(key, value)], vec![]),
+            None => (Node::new_with_key_values(vec![(key, value)], vec![]), true),
         };
         self.root = Some(Arc::new(new_root));
+        is_new
     }
 
     /// delete by key
@@ -157,8 +161,28 @@ mod test {
         let mut tree = BTree::<i32, i32>::new_with_config(BTreeConfig { max_degree: 4 });
         let keys = (1..13i32).rev().collect::<Vec<_>>();
         for i in keys.iter() {
-            tree.insert(*i, i * 100);
+            let is_new = tree.insert(*i, i * 100);
+            // first time insert, is_new should always be true
+            assert!(is_new);
             assert_eq!(*tree.get_by_key(i).unwrap(), i * 100);
+        }
+
+        for i in keys.iter() {
+            let is_new = tree.insert(*i, i * 100);
+            // second time insert, is_new should always be false
+            assert!(!is_new);
+            assert_eq!(*tree.get_by_key(i).unwrap(), i * 100);
+        }
+
+        for i in keys.iter() {
+            tree.delete_by_key(i);
+        }
+
+        for i in keys.iter() {
+            let is_new = tree.insert(*i, i * 1000);
+            // insert after delete, is_new should be true
+            assert!(is_new);
+            assert_eq!(*tree.get_by_key(i).unwrap(), i * 1000);
         }
     }
 
@@ -168,6 +192,12 @@ mod test {
         let keys = (1..13i32).collect::<Vec<_>>();
         for i in keys.iter() {
             tree.insert(*i, (i * 100) as u32);
+        }
+
+        for i in keys.iter() {
+            // second time insert, is_new should always be false
+            let is_new = tree.insert(*i, (i * 1000) as u32);
+            assert!(!is_new);
         }
 
         dbg!(&tree);

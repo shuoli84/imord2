@@ -8,35 +8,42 @@ pub enum InsertResult<K, V> {
         new_l: Arc<Node<K, V>>,
         new_r: Arc<Node<K, V>>,
     },
-    NotSplited,
+    NotSplited {
+        is_new: bool,
+    },
 }
 
 impl<K: Ord + Clone, V: Clone> Node<K, V> {
     pub fn insert(&mut self, key: K, value: V, config: &BTreeConfig) -> InsertResult<K, V> {
-        if self.is_leaf() {
+        let is_new = if self.is_leaf() {
             match self.key_values.binary_search_by(|(k, _)| k.cmp(&key)) {
                 Ok(idx) => {
                     // we are the node
                     self.key_values[idx] = (key, value);
+                    return InsertResult::NotSplited { is_new: false };
                 }
                 Err(idx) => {
                     self.key_values.insert(idx, (key, value));
+                    self.count += 1;
+                    true
                 }
             }
-            self.count += 1;
         } else {
             match self.key_values.binary_search_by(|(k, _v)| k.cmp(&key)) {
                 Ok(idx) => {
                     // we are the node
                     self.key_values[idx] = (key, value);
+                    return InsertResult::NotSplited { is_new: false };
                 }
                 Err(idx) => {
                     // we should insert at child at idx
                     let child = Arc::make_mut(&mut self.children[idx]);
                     match child.insert(key, value, config) {
-                        InsertResult::NotSplited => {
-                            self.count += 1;
-                            return InsertResult::NotSplited;
+                        InsertResult::NotSplited { is_new } => {
+                            if is_new {
+                                self.count += 1;
+                            }
+                            return InsertResult::NotSplited { is_new };
                         }
                         InsertResult::Splited {
                             new_k_v,
@@ -47,14 +54,15 @@ impl<K: Ord + Clone, V: Clone> Node<K, V> {
                             self.key_values.insert(idx, new_k_v);
                             self.children[idx] = new_l;
                             self.children.insert(idx + 1, new_r);
+                            true
                         }
                     }
                 }
             }
-        }
+        };
 
         if !config.node_should_split(self.key_values.len()) {
-            return InsertResult::NotSplited;
+            return InsertResult::NotSplited { is_new };
         }
 
         let split_at = self.key_values.len() / 2;

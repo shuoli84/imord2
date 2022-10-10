@@ -119,7 +119,7 @@ mod tests {
                 } => {
                     node = Node::new_with_key_values(vec![new_k_v], vec![new_l, new_r]);
                 }
-                InsertResult::NotSplited => {
+                InsertResult::NotSplited { .. } => {
                     // do nothing
                 }
             }
